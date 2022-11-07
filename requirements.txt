@@ -1,0 +1,4 @@
+#python==3.6
+lightgbm==3.3.3
+pandas
+numpy

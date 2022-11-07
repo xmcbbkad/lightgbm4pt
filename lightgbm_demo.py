@@ -47,6 +47,6 @@ gbm.save_model('model.txt')
 logger.info('predicting...')
 y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration)
 
-logger.info('The rmse of prediction is:', mean_squared_error(y_test, y_pred) ** 0.5)
+logger.info('The rmse of prediction is:{}'.format(mean_squared_error(y_test, y_pred) ** 0.5))
 
-logger.info('Feature importances:', list(gbm.feature_importance()))
+logger.info('Feature importances:{}'.format(list(gbm.feature_importance())))
