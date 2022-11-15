@@ -46,12 +46,12 @@ def load_data(data_dir):
     X = df_all.drop('t0_close_ratio_last', axis=1).values
     Y = df_all['t0_close_ratio_last'].values
 
-    return X, Y
+    return features, X, Y
 
-x_train, y_train = load_data(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
+feature_names, x_train, y_train = load_data(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
 lgb_train = lgb.Dataset(x_train, y_train)
 
-x_test, y_test  = load_data(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
+feature_names, x_test, y_test  = load_data(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
 lgb_eval = lgb.Dataset(x_test, y_test)
 
 
@@ -103,4 +103,9 @@ acc = (tp+tn)*1.0/(tp+tn+fp+fn)
 
 logger.info("tp={}, fp={}, fn={}, tn={}, acc={}".format(tp, fp, fn, tn ,acc))
 
-logger.info('Feature importances:{}'.format(list(gbm.feature_importance())))
+
+logger.info(pd.DataFrame({
+        'column': feature_names[1:],
+        'importance': gbm.feature_importance(),
+    }).sort_values(by='importance', ascending=False))
+#logger.info('Feature importances:{}'.format(list(gbm.feature_importance())))
