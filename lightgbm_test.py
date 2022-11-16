@@ -73,7 +73,9 @@ class Lightgbm4pt():
         lgb_eval = lgb.Dataset(x_eval, y_eval)
 
         
-        callbacks = [lgb.log_evaluation(period=100), lgb.early_stopping(stopping_rounds=30)]
+        #callbacks = [lgb.log_evaluation(period=100), lgb.early_stopping(stopping_rounds=30)]
+        #callbacks = [lgb.early_stopping(stopping_rounds=10)]
+        callbacks=[]
         self.gbm = lgb.train(self.params,
                         lgb_train,
                         valid_sets=lgb_eval,
@@ -83,7 +85,6 @@ class Lightgbm4pt():
         self.gbm.save_model('model.txt')
 
     def predict(self, test_data):
-        logger.info('predicting...')
         y_pred = self.gbm.predict(test_data, num_iteration=self.gbm.best_iteration)
         return y_pred
 
@@ -93,23 +94,36 @@ class Lightgbm4pt():
         fp = 0
         tn = 0
         fn = 0
-        
+       
+        gain = 0
+        long_gain = 0
+        short_gain = 0
+
         logger.info('The rmse of prediction is:{}'.format(mean_squared_error(y_test, y_pred) ** 0.5))
         for i in range(len(y_test)):
             #logger.info("y_pred:{}  y_test:{}".format(round(y_pred[i], 4), y_test[i]))
             #print("y_pred:{}  y_test:{}".format(round(y_pred[i], 4), y_test[i]))
             if y_pred[i] > 1 and y_test[i] > 1:
                 tp +=1
+                long_gain += y_test[i]-1
             elif y_pred[i] > 1 and y_test[i] < 1:
                 fp +=1
+                long_gain -= (1-y_test[i])
             elif y_pred[i] < 1 and y_test[i] > 1:
                 fn +=1
+                short_gain -= (y_test[i]-1)
             elif y_pred[i] < 1 and y_test[i] < 1:
                 tn +=1
-        
-        acc = (tp+tn)*1.0/(tp+tn+fp+fn)
-        
-        logger.info("tp={}, fp={}, fn={}, tn={}, acc={}".format(tp, fp, fn, tn ,acc))
+                short_gain += (1-y_test[i])
+       
+        gain = round(long_gain + short_gain, 4)
+        long_gain = round(long_gain, 4)
+        short_gain = round(short_gain, 4)
+
+        acc = round((tp+tn)*1.0/(tp+tn+fp+fn), 4)
+        long_acc = round(tp*1.0/(tp+fp), 4)
+        short_acc = round(tn*1.0/(tn+fn), 4)
+        logger.info("tp={}, fp={}, fn={}, tn={}, acc={}, long_acc={}, short_acc={}, gain={}, long_gain={}, short_gain={}".format(tp, fp, fn, tn ,acc, long_acc, short_acc, gain, long_gain, short_gain))
 
     def feature_importance(self, ):
         logger.info(pd.DataFrame({
@@ -129,11 +143,13 @@ if __name__ == '__main__':
 
     lightgbm4pt.cal_metrics(y_eval, y_pred)
 
-    pred_dir = '/Users/xiaokunfan/code/data/TSLA_5mins_features'
+    lightgbm4pt.feature_importance()
+
+    pred_dir = '/Users/xiaokunfan/code/data/TSLA_5mins_features_202211'
     for filename in os.listdir(pred_dir):
         x, y = lightgbm4pt.load_data_from_file(os.path.join(pred_dir, filename))
         y_pred = lightgbm4pt.predict(x)
         logger.info(filename)
         lightgbm4pt.cal_metrics(y, y_pred)
 
-
+    
