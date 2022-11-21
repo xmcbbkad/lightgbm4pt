@@ -1,9 +1,11 @@
 # coding: utf-8
 
 import os
+import re
 import json
 import lightgbm as lgb
 import pandas as pd
+import numpy as np
 from sklearn.metrics import mean_squared_error
 import logging
 
@@ -54,10 +56,13 @@ class Lightgbm4pt():
         return X, Y
 
 
-    def load_data_from_dir(self, data_dir):
+    def load_data_from_dir(self, data_dir, pattern='.', not_pattern='fffff'):
         df_all = pd.DataFrame(columns = self.feature_names)
-        for filename in os.listdir(data_dir):
-            logger.info("read_file={}".format(filename))
+        for filename in sorted(os.listdir(data_dir)):
+            if (not re.search(pattern, filename)) or re.search(not_pattern, filename):
+                #logger.info("filter_read_file={}, pattern={}, not_pattern={}".format(filename, pattern, not_pattern))
+                continue
+            #logger.info("read_file={}".format(filename))
             df = pd.read_csv(os.path.join(data_dir, filename), header=0, sep='\t')
             df = df[self.feature_names]
             df_all = df_all.append(df, ignore_index=True)
@@ -98,8 +103,9 @@ class Lightgbm4pt():
         gain = 0
         long_gain = 0
         short_gain = 0
+        
+        rmse = mean_squared_error(y_test, y_pred) ** 0.5
 
-        logger.info('The rmse of prediction is:{}'.format(mean_squared_error(y_test, y_pred) ** 0.5))
         for i in range(len(y_test)):
             #logger.info("y_pred:{}  y_test:{}".format(round(y_pred[i], 4), y_test[i]))
             #print("y_pred:{}  y_test:{}".format(round(y_pred[i], 4), y_test[i]))
@@ -123,7 +129,10 @@ class Lightgbm4pt():
         acc = round((tp+tn)*1.0/(tp+tn+fp+fn), 4)
         long_acc = round(tp*1.0/(tp+fp), 4)
         short_acc = round(tn*1.0/(tn+fn), 4)
-        logger.info("tp={}, fp={}, fn={}, tn={}, acc={}, long_acc={}, short_acc={}, gain={}, long_gain={}, short_gain={}".format(tp, fp, fn, tn ,acc, long_acc, short_acc, gain, long_gain, short_gain))
+        #logger.info("tp={}, fp={}, fn={}, tn={}, acc={}, long_acc={}, short_acc={}, gain={}, long_gain={}, short_gain={}".format(tp, fp, fn, tn ,acc, long_acc, short_acc, gain, long_gain, short_gain))
+        m = {"rmse":rmse, "tp":tp, "fp":fp, "fn":fn, "tn":tn, "acc":acc, "long_acc":long_acc, "short_acc":short_acc, "gain":gain, "long_gain":long_gain, "short_gain":short_gain}
+        logger.info("rmse={}, tp={}, fp={}, fn={}, tn={}, acc={}, long_acc={}, short_acc={}, gain={}, long_gain={}, short_gain={}".format(round(m['rmse'],4), m['tp'], m['fp'], m['fn'], m['tn'] ,format(m['acc'],'.2%'), format(m['long_acc'],'.2%'), format(m['short_acc'],'.2%'), format(m['gain'],'.2%'), format(m['long_gain'],'.2%'), format(m['short_gain'],'.2%')))
+        return m
 
     def feature_importance(self, ):
         logger.info(pd.DataFrame({
@@ -132,8 +141,40 @@ class Lightgbm4pt():
             }).sort_values(by='importance', ascending=False))
 
 
+
+    def split_train_eval_by_month(self, data_dir):
+        month = []
+        for filename in sorted(os.listdir(data_dir)):
+            month.append(filename[:7])
+        month = sorted(list(set(month)))
+
+        for i in range(len(month)):
+            logger.info('train:')
+            x_train, y_train = self.load_data_from_dir(data_dir=data_dir, pattern='.', not_pattern=month[i])
+            logger.info('eval:')
+            x_eval, y_eval = self.load_data_from_dir(data_dir=data_dir, pattern=month[i], not_pattern='ffff')
+            logger.info('------------------------------')
+
+            lightgbm4pt.train(x_train, y_train, x_eval, y_eval)
+            y_pred = lightgbm4pt.predict(x_eval)
+
+            logger.info("eval_month={}".format(month[i]))
+            lightgbm4pt.cal_metrics(y_eval, y_pred)
+    
+            y_random = np.random.rand(len(y_pred))
+            y_random += 0.5
+            logger.info('random_metrics:')
+            m = lightgbm4pt.cal_metrics(y_eval, y_random)
+       
+    
+
+
 if __name__ == '__main__':
     lightgbm4pt = Lightgbm4pt(feature_file = '/Users/xiaokunfan/code/candle_features/features.txt')
+    lightgbm4pt.split_train_eval_by_month(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
+    exit(0)
+
+
 
     x_train, y_train = lightgbm4pt.load_data_from_dir(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
     x_eval, y_eval  = lightgbm4pt.load_data_from_dir(data_dir='/Users/xiaokunfan/code/data/TSLA_5mins_features')
@@ -142,14 +183,39 @@ if __name__ == '__main__':
     y_pred = lightgbm4pt.predict(x_eval)
 
     lightgbm4pt.cal_metrics(y_eval, y_pred)
+    
+    y_random = np.random.rand(len(y_pred))
+    y_random += 0.5
+    logger.info('random_metrics:')
+    m = lightgbm4pt.cal_metrics(y_eval, y_random)
+
 
     lightgbm4pt.feature_importance()
 
+    #--------------------------------------------------------------------------------
+
     pred_dir = '/Users/xiaokunfan/code/data/TSLA_5mins_features_202211'
-    for filename in os.listdir(pred_dir):
+    for filename in sorted(os.listdir(pred_dir)):
         x, y = lightgbm4pt.load_data_from_file(os.path.join(pred_dir, filename))
         y_pred = lightgbm4pt.predict(x)
         logger.info(filename)
         lightgbm4pt.cal_metrics(y, y_pred)
+        lightgbm4pt.cal_metrics(y, y_pred)
 
+        logger.info('random_metrics:')
+        y_random = np.random.rand(len(y_pred))
+        y_random += 0.5
+        lightgbm4pt.cal_metrics(y, y_random)
+
+        logger.info('--------------------------------------------------')
+
+    x, y = lightgbm4pt.load_data_from_dir(data_dir=pred_dir)
+    y_pred = lightgbm4pt.predict(x)
+    lightgbm4pt.cal_metrics(y, y_pred)
     
+    logger.info('random_metrics:')
+    y_random = np.random.rand(len(y_pred))
+    y_random += 0.5
+    lightgbm4pt.cal_metrics(y, y_random)
+
+
